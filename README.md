@@ -6,12 +6,24 @@ This package provides a simple and intuitive API to manage Android devices, inst
 
 ## Features
 
-- List connected Android devices
-- Install APK files on devices
-- Retrieve installed packages
-- Access device system properties
-- Stream logcat output with filtering options
-- Clear logcat buffer
+- **Device Management**
+  - List connected Android devices with detailed information
+  - Access device system properties
+- **Package Management**
+  - Install APK files on devices
+  - Retrieve installed third-party packages
+- **Logcat**
+  - Stream logcat output with filtering options (by level and process ID)
+  - Clear logcat buffer
+- **File System Operations**
+  - List files and directories on the device
+  - Upload and download files between device and local filesystem
+  - Create directories on the device
+  - Delete files and directories
+  - Support for app-specific private directories using `run-as`
+- **Logging**
+  - Customizable logging with the `AdbLogger` interface
+  - Default console logger included
 
 ## Prerequisites
 
@@ -43,6 +55,12 @@ import 'package:adb_dart/adb_dart.dart';
 
 // Provide the path to your adb executable
 final adbClient = AdbClient(adbExecutablePath: '/path/to/adb');
+
+// With custom logger
+final adbClient = AdbClient(
+  adbExecutablePath: '/path/to/adb',
+  logger: ConsoleLogger(), // Your custom AdbLogger implementation
+);
 
 // On macOS/Linux with Android Studio:
 // final adbClient = AdbClient(adbExecutablePath: '~/Library/Android/sdk/platform-tools/adb');
@@ -119,6 +137,51 @@ adbClient.listenLogcat(
 });
 ```
 
+### File system operations
+
+```dart
+// List files in a directory
+final files = await adbClient.listFiles('/sdcard/Download', deviceId);
+for (final file in files) {
+  print('${file.name} - ${file.type.name} - ${file.size} bytes');
+}
+
+// Create a directory
+await adbClient.createDirectory('/sdcard/', 'MyFolder', deviceId);
+
+// Upload a file to the device
+await adbClient.uploadFile(
+  'local/file.txt',
+  '/sdcard/MyFolder/file.txt',
+  deviceId,
+);
+
+// Download a file from the device
+await adbClient.downloadFile(
+  '/sdcard/MyFolder/file.txt',
+  'downloaded_file.txt',
+  deviceId,
+);
+
+// Delete a file or directory
+await adbClient.deleteFile('/sdcard/MyFolder', deviceId);
+
+// Access app-specific private directories
+final appFiles = await adbClient.listFiles(
+  '/data/data/com.example.app/files',
+  deviceId,
+  packageName: 'com.example.app', // Required for private directories
+);
+
+// Upload to app's private directory
+await adbClient.uploadFile(
+  'config.json',
+  'files/config.json', // Relative path within app's directory
+  deviceId,
+  packageName: 'com.example.app',
+);
+```
+
 ## Complete Example
 
 ```dart
@@ -164,18 +227,49 @@ Future<void> main() async {
 ### AdbClient
 
 #### Constructor
-- `AdbClient({required String adbExecutablePath})` - Creates a new ADB client instance
+- `AdbClient({required String adbExecutablePath, AdbLogger? logger})` - Creates a new ADB client instance with optional custom logger
 
-#### Methods
+#### Device Methods
 - `Future<Iterable<AndroidDevice>> listConnectedDevices()` - Lists all connected devices
+- `Future<Map<String, String>> getProperties(DeviceId deviceId)` - Retrieves device system properties
+
+#### Package Methods
 - `Future<void> installApplication(File apkFile, DeviceId deviceId)` - Installs an APK on a device
 - `Future<Iterable<String>> getAllPackages(DeviceId deviceId)` - Gets all third-party packages installed
-- `Future<Map<String, String>> getProperties(DeviceId deviceId)` - Retrieves device system properties
+
+#### Logcat Methods
 - `Stream<Iterable<String>> listenLogcat(DeviceId deviceId, {LogcatLevel? level, int? processId})` - Streams logcat output
 - `Future<void> clearLogcat(DeviceId deviceId)` - Clears the logcat buffer
 
-### LogcatLevel
+#### File System Methods
+- `Future<Iterable<FileEntry>> listFiles(String path, DeviceId deviceId, {String? packageName})` - Lists files and directories
+- `Future<void> createDirectory(String path, String name, DeviceId deviceId, {String? packageName})` - Creates a directory
+- `Future<void> uploadFile(String localFilePath, String destinationPath, DeviceId deviceId, {String? packageName})` - Uploads a file to the device
+- `Future<void> downloadFile(String filePath, String destinationPath, DeviceId deviceId, {String? packageName})` - Downloads a file from the device
+- `Future<void> deleteFile(String filePath, DeviceId deviceId, {String? packageName})` - Deletes a file or directory
 
+### Models
+
+#### FileEntry
+Represents a file or directory on the Android device:
+- `FileType type` - Type of the entry (file, directory, symlink, or unknown)
+- `String name` - Name of the file or directory
+- `String permissions` - Unix-style permissions (e.g., "drwxr-xr-x")
+- `int? size` - Size in bytes (null for directories)
+- `DateTime? date` - Last modification date
+- `String? owner` - Owner user
+- `String? group` - Owner group
+- `int? links` - Number of hard links
+- `String? symlinkTarget` - Target path if this is a symlink
+
+#### FileType
+Enumeration of file types:
+- `FileType.file` - Regular file
+- `FileType.directory` - Directory
+- `FileType.symlink` - Symbolic link
+- `FileType.unknown` - Unknown type
+
+#### LogcatLevel
 Available log levels for filtering:
 - `LogcatLevel.verbose`
 - `LogcatLevel.debug`
@@ -183,6 +277,31 @@ Available log levels for filtering:
 - `LogcatLevel.warning`
 - `LogcatLevel.error`
 - `LogcatLevel.fatal`
+
+### Logging
+
+#### AdbLogger Interface
+Implement this interface to create custom loggers:
+```dart
+abstract class AdbLogger {
+  void debug(String message);
+  void info(String message);
+  void error(String message, {Object? error, StackTrace? stackTrace});
+}
+```
+
+#### DefaultLogger
+A built-in logger that outputs to the console. Used by default if no logger is provided.
+
+### Exceptions
+
+All exceptions extend `AdbException`:
+- `AdbInitializationException` - Thrown when ADB executable is not found
+- `AdbDeviceException` - Thrown when device operations fail
+- `AdbPackageException` - Thrown when package operations fail
+- `AdbPropertyException` - Thrown when property retrieval fails
+- `AdbLogcatException` - Thrown when logcat operations fail
+- `AdbInstallationException` - Thrown when APK installation fails
 
 ## Contributing
 

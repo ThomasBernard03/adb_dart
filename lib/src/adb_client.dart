@@ -1,12 +1,17 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:adb_dart/src/device_id.dart';
 import 'package:adb_dart/src/exceptions/adb_initialization_exception.dart';
+import 'package:adb_dart/src/logging/adb_logger.dart';
+import 'package:adb_dart/src/logging/default_logger.dart';
 import 'package:adb_dart/src/models/android_device.dart';
+import 'package:adb_dart/src/models/file_entry.dart';
 import 'package:adb_dart/src/models/logcat_level.dart';
+import 'package:adb_dart/src/services/adb_device_service.dart';
+import 'package:adb_dart/src/services/adb_file_system_service.dart';
+import 'package:adb_dart/src/services/adb_logcat_service.dart';
+import 'package:adb_dart/src/services/adb_package_service.dart';
+import 'package:adb_dart/src/services/adb_property_service.dart';
 
 /// A lightweight ADB client used to interact with Android devices
 /// through the Android Debug Bridge executable.
@@ -14,298 +19,203 @@ class AdbClient {
   /// Absolute path to the adb executable.
   final String adbExecutablePath;
 
+  /// Logger instance for ADB operations.
+  final AdbLogger _logger;
+
+  /// Service for device management operations.
+  late final AdbDeviceService _deviceService;
+
+  /// Service for package management operations.
+  late final AdbPackageService _packageService;
+
+  /// Service for system property operations.
+  late final AdbPropertyService _propertyService;
+
+  /// Service for logcat operations.
+  late final AdbLogcatService _logcatService;
+
+  /// Service for file system operations.
+  late final AdbFileSystemService _fileSystemService;
+
   /// Creates a new [AdbClient].
+  ///
+  /// Optionally provide a custom [logger] to receive log messages
+  /// from ADB operations. If not provided, a default console logger is used.
   ///
   /// Throws an [AdbInitializationException] if the adb executable
   /// does not exist at the provided path.
-  AdbClient({required this.adbExecutablePath}) {
+  AdbClient({
+    required this.adbExecutablePath,
+    AdbLogger? logger,
+  }) : _logger = logger ?? const DefaultLogger() {
     final file = File(adbExecutablePath);
 
     if (!file.existsSync()) {
       throw AdbInitializationException(path: file.path);
     }
+
+    // Initialize services
+    _deviceService = AdbDeviceService(
+      adbExecutablePath: adbExecutablePath,
+      logger: _logger,
+    );
+    _packageService = AdbPackageService(
+      adbExecutablePath: adbExecutablePath,
+      logger: _logger,
+    );
+    _propertyService = AdbPropertyService(
+      adbExecutablePath: adbExecutablePath,
+      logger: _logger,
+    );
+    _logcatService = AdbLogcatService(
+      adbExecutablePath: adbExecutablePath,
+      logger: _logger,
+    );
+    _fileSystemService = AdbFileSystemService(
+      adbExecutablePath: adbExecutablePath,
+      logger: _logger,
+    );
   }
 
   /// Lists all Android devices currently connected via ADB.
   ///
   /// Only devices in the `device` state are returned.
-  /// If an error occurs, an empty list is returned.
-  Future<Iterable<AndroidDevice>> listConnectedDevices() async {
-    try {
-      log('Searching connected devices');
-
-      final result = await Process.run(adbExecutablePath, ['devices', '-l']);
-
-      if (result.exitCode != 0) {
-        log('Error fetching devices: ${result.stderr}');
-        return const [];
-      }
-
-      final lines = (result.stdout as String).split('\n');
-      final devices = <AndroidDevice>[];
-
-      for (var line in lines) {
-        line = line.trim();
-
-        if (line.isEmpty || line.startsWith('List of devices')) {
-          continue;
-        }
-
-        final parts = line.split(RegExp(r'\s+'));
-        if (parts.length < 2 || parts[1] != 'device') {
-          continue;
-        }
-
-        final DeviceId deviceId = parts[0];
-        String name = deviceId;
-        String manufacturer = 'Unknown';
-
-        for (final part in parts.skip(2)) {
-          if (part.startsWith('model:')) {
-            name = part.replaceFirst('model:', '');
-          } else if (part.startsWith('manufacturer:')) {
-            manufacturer = part.replaceFirst('manufacturer:', '');
-          }
-        }
-
-        devices.add(
-          AndroidDevice(
-            manufacturer: manufacturer,
-            name: name,
-            deviceId: deviceId,
-          ),
-        );
-      }
-
-      log('Found ${devices.length} devices');
-      return devices;
-    } catch (e, stack) {
-      log('Exception while fetching devices', error: e, stackTrace: stack);
-      return const [];
-    }
-  }
+  ///
+  /// Throws [AdbDeviceException] if the ADB command fails or
+  /// returns a non-zero exit code.
+  Future<Iterable<AndroidDevice>> listConnectedDevices() =>
+      _deviceService.listConnectedDevices();
 
   /// Installs an APK on the specified Android device.
   ///
-  /// The installation fails silently if the provided file
-  /// is not an APK or if ADB returns a non-zero exit code.
-  Future<void> installApplication(File apkFile, DeviceId deviceId) async {
-    try {
-      if (!apkFile.path.endsWith('.apk')) {
-        log('Provided file is not an APK: ${apkFile.path}');
-        return;
-      }
-
-      final process = await Process.start(adbExecutablePath, [
-        '-s',
-        deviceId,
-        'install',
-        apkFile.path,
-      ]);
-
-      final stdoutBuffer = StringBuffer();
-      final stderrBuffer = StringBuffer();
-
-      process.stdout.transform(utf8.decoder).listen(stdoutBuffer.write);
-      process.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
-
-      final exitCode = await process.exitCode;
-
-      if (exitCode != 0) {
-        log('ADB install error: ${stderrBuffer.toString()}');
-        throw Exception('Failed to install APK');
-      }
-
-      log('APK installed successfully: ${stdoutBuffer.toString()}');
-    } catch (e, stack) {
-      log(
-        'Error while installing APK: ${apkFile.path}',
-        error: e,
-        stackTrace: stack,
-      );
-    }
-  }
+  /// Throws [AdbInstallationException] if:
+  /// - The provided file is not an APK
+  /// - The APK file does not exist
+  /// - The installation fails on the device
+  /// - ADB returns a non-zero exit code
+  Future<void> installApplication(File apkFile, DeviceId deviceId) =>
+      _packageService.installApplication(apkFile, deviceId);
 
   /// Retrieves all third-party installed package names on a device.
   ///
-  /// Returns an empty list if the command fails.
-  Future<Iterable<String>> getAllPackages(DeviceId deviceId) async {
-    try {
-      final process = await Process.start(adbExecutablePath, [
-        '-s',
-        deviceId,
-        'shell',
-        'pm',
-        'list',
-        'packages',
-        '-3',
-      ]);
-
-      final stdout = await process.stdout.transform(utf8.decoder).join();
-      final stderr = await process.stderr.transform(utf8.decoder).join();
-      final exitCode = await process.exitCode;
-
-      if (stderr.isNotEmpty) {
-        log(stderr.trim());
-      }
-
-      if (exitCode != 0) {
-        log('Failed to list packages (exitCode=$exitCode)');
-        return const [];
-      }
-
-      return stdout
-          .split('\n')
-          .map((line) => line.trim())
-          .where((line) => line.startsWith('package:'))
-          .map((line) => line.substring('package:'.length))
-          .where((pkg) => pkg.isNotEmpty)
-          .toList();
-    } catch (e, stack) {
-      log(
-        'Exception while listing packages for device $deviceId',
-        error: e,
-        stackTrace: stack,
-      );
-      return const [];
-    }
-  }
+  /// Throws [AdbPackageException] if the command fails or returns
+  /// a non-zero exit code.
+  Future<Iterable<String>> getAllPackages(DeviceId deviceId) =>
+      _packageService.getAllPackages(deviceId);
 
   /// Retrieves all system properties of a connected Android device.
   ///
   /// The result is returned as a map where the key is the property
   /// name and the value is the associated property value.
-  Future<Map<String, String>> getProperties(DeviceId deviceId) async {
-    final process = await Process.start(adbExecutablePath, [
-      '-s',
-      deviceId,
-      'shell',
-      'getprop',
-    ]);
-
-    final stdoutBuffer = StringBuffer();
-    final stderrBuffer = StringBuffer();
-
-    process.stdout.transform(utf8.decoder).listen(stdoutBuffer.write);
-    process.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
-
-    final exitCode = await process.exitCode;
-
-    if (exitCode != 0) {
-      log('ADB error: ${stderrBuffer.toString()}');
-      throw Exception('Unable to retrieve device properties');
-    }
-
-    final lines = stdoutBuffer.toString().split('\n');
-    final properties = <String, String>{};
-    final regex = RegExp(r'^\[(.+?)\]: \[(.*?)\]$');
-
-    for (final line in lines) {
-      final match = regex.firstMatch(line.trim());
-      if (match == null) continue;
-
-      properties[match.group(1)!] = match.group(2)!;
-    }
-
-    return properties;
-  }
+  ///
+  /// Throws [AdbPropertyException] if the ADB command fails or
+  /// returns a non-zero exit code.
+  Future<Map<String, String>> getProperties(DeviceId deviceId) =>
+      _propertyService.getProperties(deviceId);
 
   /// Starts listening to the logcat output of a device.
   ///
   /// Logs are buffered and emitted periodically as batches
   /// to avoid flooding the stream.
+  ///
+  /// Throws [AdbLogcatException] if the deviceId is empty or invalid.
   Stream<Iterable<String>> listenLogcat(
     DeviceId deviceId, {
     LogcatLevel? level,
     int? processId,
-  }) async* {
-    if (deviceId.isEmpty) {
-      log('Device id is empty, logcat listener aborted');
-      return;
-    }
-
-    final args = <String>['-s', deviceId, 'logcat'];
-
-    if (level != null) {
-      args.add('*:${_mapLevel(level)}');
-    }
-
-    if (processId != null) {
-      args.addAll(['--pid', processId.toString()]);
-    }
-
-    final process = await Process.start(adbExecutablePath, args);
-
-    final buffer = <String>[];
-    final controller = StreamController<Iterable<String>>();
-    Timer? timer;
-
-    process.stdout
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .listen(
-          (line) {
-            buffer.add(line);
-
-            timer ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
-              if (buffer.isNotEmpty) {
-                controller.add(List.from(buffer));
-                buffer.clear();
-              }
-            });
-          },
-          onDone: () {
-            timer?.cancel();
-            if (buffer.isNotEmpty) {
-              controller.add(List.from(buffer));
-            }
-            controller.close();
-          },
-        );
-
-    yield* controller.stream;
-  }
+  }) =>
+      _logcatService.listenLogcat(
+        deviceId,
+        level: level,
+        processId: processId,
+      );
 
   /// Clears the logcat buffer on the specified device.
   ///
   /// Useful before starting a new logcat session.
-  Future<void> clearLogcat(DeviceId deviceId) async {
-    try {
-      log('Clearing logcat');
+  ///
+  /// Throws [AdbLogcatException] if the command fails or returns
+  /// a non-zero exit code.
+  Future<void> clearLogcat(DeviceId deviceId) =>
+      _logcatService.clearLogcat(deviceId);
 
-      final result = await Process.run(adbExecutablePath, [
-        '-s',
+  /// Lists files and directories at the specified path on a device.
+  ///
+  /// If [packageName] is provided, uses `run-as` to access the package's
+  /// private directory with proper permissions.
+  ///
+  /// Returns a list of [FileEntry] objects representing the contents.
+  Future<Iterable<FileEntry>> listFiles(
+    String path,
+    DeviceId deviceId, {
+    String? packageName,
+  }) =>
+      _fileSystemService.listFiles(path, deviceId, packageName: packageName);
+
+  /// Deletes a file or directory on the specified device.
+  ///
+  /// If [packageName] is provided, uses `run-as` to delete files in the
+  /// package's private directory.
+  ///
+  /// Uses `rm -rf` to recursively delete directories.
+  Future<void> deleteFile(
+    String filePath,
+    DeviceId deviceId, {
+    String? packageName,
+  }) =>
+      _fileSystemService.deleteFile(filePath, deviceId,
+          packageName: packageName);
+
+  /// Creates a directory on the specified device.
+  ///
+  /// If [packageName] is provided, uses `run-as` to create the directory
+  /// in the package's private directory.
+  ///
+  /// Uses `mkdir -p` to create parent directories as needed.
+  Future<void> createDirectory(
+    String path,
+    String name,
+    DeviceId deviceId, {
+    String? packageName,
+  }) =>
+      _fileSystemService.createDirectory(path, name, deviceId,
+          packageName: packageName);
+
+  /// Downloads a file from the device to the local filesystem.
+  ///
+  /// If [packageName] is provided, uses `run-as` with `exec-out` to download
+  /// files from the package's private directory.
+  ///
+  /// Falls back to standard `adb pull` for public files.
+  Future<void> downloadFile(
+    String filePath,
+    String destinationPath,
+    DeviceId deviceId, {
+    String? packageName,
+  }) =>
+      _fileSystemService.downloadFile(
+        filePath,
+        destinationPath,
         deviceId,
-        'logcat',
-        '-c',
-      ]);
+        packageName: packageName,
+      );
 
-      if (result.exitCode != 0) {
-        log('Error while clearing logcat: ${result.stderr}');
-      } else {
-        log('Logcat cleared successfully');
-      }
-    } catch (e, stack) {
-      log('Exception while clearing logcat', error: e, stackTrace: stack);
-    }
-  }
-
-  /// Maps a [LogcatLevel] enum to its corresponding
-  /// single-letter ADB logcat representation.
-  String _mapLevel(LogcatLevel level) {
-    switch (level) {
-      case LogcatLevel.verbose:
-        return 'V';
-      case LogcatLevel.debug:
-        return 'D';
-      case LogcatLevel.info:
-        return 'I';
-      case LogcatLevel.warning:
-        return 'W';
-      case LogcatLevel.error:
-        return 'E';
-      case LogcatLevel.fatal:
-        return 'F';
-    }
-  }
+  /// Uploads a file from the local filesystem to the device.
+  ///
+  /// If [packageName] is provided, uploads to /sdcard first, then uses
+  /// `run-as` to copy the file to the package's private directory.
+  ///
+  /// Falls back to standard `adb push` for public destinations.
+  Future<void> uploadFile(
+    String localFilePath,
+    String destinationPath,
+    DeviceId deviceId, {
+    String? packageName,
+  }) =>
+      _fileSystemService.uploadFile(
+        localFilePath,
+        destinationPath,
+        deviceId,
+        packageName: packageName,
+      );
 }
