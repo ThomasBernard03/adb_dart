@@ -2,11 +2,14 @@ library;
 
 export 'src/adb_client.dart';
 export 'src/device_id.dart';
+// Services
 export 'src/services/adb_device_service.dart';
 export 'src/services/adb_file_system_service.dart';
 export 'src/services/adb_logcat_service.dart';
 export 'src/services/adb_package_service.dart';
 export 'src/services/adb_property_service.dart';
+export 'src/services/adb_system_service.dart';
+// Exceptions
 export 'src/exceptions/adb_device_exception.dart';
 export 'src/exceptions/adb_exception.dart';
 export 'src/exceptions/adb_initialization_exception.dart';
@@ -14,9 +17,15 @@ export 'src/exceptions/adb_installation_exception.dart';
 export 'src/exceptions/adb_logcat_exception.dart';
 export 'src/exceptions/adb_package_exception.dart';
 export 'src/exceptions/adb_property_exception.dart';
+// Logging
 export 'src/logging/adb_logger.dart';
 export 'src/logging/default_logger.dart';
+// Models
 export 'src/models/android_device.dart';
+export 'src/models/battery_info.dart';
+export 'src/models/display_info.dart';
 export 'src/models/file_entry.dart';
 export 'src/models/file_type.dart';
 export 'src/models/logcat_level.dart';
+export 'src/models/network_info.dart';
+export 'src/models/storage_info.dart';

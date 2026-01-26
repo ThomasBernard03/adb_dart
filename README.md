@@ -11,7 +11,18 @@ This package provides a simple and intuitive API to manage Android devices, inst
   - Access device system properties
 - **Package Management**
   - Install APK files on devices
+  - Uninstall applications
   - Retrieve installed third-party packages
+- **App Control**
+  - Launch applications
+  - Force stop applications
+  - Clear app data
+  - Start specific activities with extras
+- **System Information**
+  - Battery status (level, health, temperature, charging state)
+  - Storage information (available space per mount point)
+  - Display information (resolution, density)
+  - Network information (WiFi status, IP addresses, interfaces)
 - **Logcat**
   - Stream logcat output with filtering options (by level and process ID)
   - Clear logcat buffer
@@ -37,7 +48,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  adb_dart: ^1.0.0
+  adb_dart: ^1.2.0
 ```
 
 Then run:
@@ -182,6 +193,73 @@ await adbClient.uploadFile(
 );
 ```
 
+### System information
+
+```dart
+// Get battery info
+final battery = await adbClient.getBatteryInfo(deviceId);
+print('Battery: ${battery.level}% - ${battery.status.name}');
+print('Temperature: ${battery.temperature}°C');
+print('Health: ${battery.health.name}');
+
+// Get storage info
+final storage = await adbClient.getStorageInfo(deviceId);
+for (final mount in storage) {
+  print('${mount.mountPoint}: ${mount.usagePercent}% used');
+}
+
+// Get display info
+final display = await adbClient.getDisplayInfo(deviceId);
+print('Resolution: ${display.resolution}');
+print('Density: ${display.densityDpi} dpi');
+
+// Get network info
+final network = await adbClient.getNetworkInfo(deviceId);
+if (network.wifi != null) {
+  print('WiFi: ${network.wifi!.ssid} - ${network.wifi!.ipAddress}');
+}
+```
+
+### App management
+
+```dart
+// Launch an app (like tapping its icon)
+await adbClient.launchApp('com.example.app', deviceId);
+
+// Start a specific activity
+await adbClient.startActivity(
+  'com.android.settings',
+  '.Settings',
+  deviceId,
+);
+
+// Start activity with extras
+await adbClient.startActivity(
+  'com.example.app',
+  '.DeepLinkActivity',
+  deviceId,
+  extras: {'key': 'value'},
+  action: 'android.intent.action.VIEW',
+  data: 'https://example.com',
+);
+
+// Force stop an app
+await adbClient.forceStopApp('com.example.app', deviceId);
+
+// Clear app data
+await adbClient.clearAppData('com.example.app', deviceId);
+
+// Uninstall an app
+await adbClient.uninstallApplication('com.example.app', deviceId);
+
+// Uninstall but keep data (for reinstall)
+await adbClient.uninstallApplication(
+  'com.example.app',
+  deviceId,
+  keepData: true,
+);
+```
+
 ## Complete Example
 
 ```dart
@@ -235,7 +313,20 @@ Future<void> main() async {
 
 #### Package Methods
 - `Future<void> installApplication(File apkFile, DeviceId deviceId)` - Installs an APK on a device
+- `Future<void> uninstallApplication(String packageName, DeviceId deviceId, {bool keepData})` - Uninstalls an app
 - `Future<Iterable<String>> getAllPackages(DeviceId deviceId)` - Gets all third-party packages installed
+
+#### App Control Methods
+- `Future<void> launchApp(String packageName, DeviceId deviceId)` - Launches an app
+- `Future<void> startActivity(String packageName, String activityName, DeviceId deviceId, {...})` - Starts a specific activity
+- `Future<void> forceStopApp(String packageName, DeviceId deviceId)` - Force stops an app
+- `Future<void> clearAppData(String packageName, DeviceId deviceId)` - Clears all app data
+
+#### System Information Methods
+- `Future<BatteryInfo> getBatteryInfo(DeviceId deviceId)` - Gets battery status
+- `Future<List<StorageInfo>> getStorageInfo(DeviceId deviceId)` - Gets storage information
+- `Future<DisplayInfo> getDisplayInfo(DeviceId deviceId)` - Gets display information
+- `Future<NetworkInfo> getNetworkInfo(DeviceId deviceId)` - Gets network information
 
 #### Logcat Methods
 - `Stream<Iterable<String>> listenLogcat(DeviceId deviceId, {LogcatLevel? level, int? processId})` - Streams logcat output
@@ -277,6 +368,38 @@ Available log levels for filtering:
 - `LogcatLevel.warning`
 - `LogcatLevel.error`
 - `LogcatLevel.fatal`
+
+#### BatteryInfo
+Battery status information:
+- `int level` - Battery percentage (0-100)
+- `BatteryStatus status` - Charging status (charging, discharging, full, etc.)
+- `BatteryHealth health` - Battery health (good, overheat, dead, etc.)
+- `bool isPlugged` - Whether device is plugged in
+- `PlugType? plugType` - Power source type (ac, usb, wireless)
+- `double temperature` - Temperature in Celsius
+- `int voltage` - Voltage in millivolts
+- `String? technology` - Battery technology (e.g., "Li-ion")
+
+#### StorageInfo
+Storage mount point information:
+- `String mountPoint` - Mount path (e.g., "/sdcard")
+- `int totalBytes` - Total size in bytes
+- `int usedBytes` - Used space in bytes
+- `int availableBytes` - Available space in bytes
+- `int usagePercent` - Usage percentage (0-100)
+- `String? filesystem` - Filesystem type
+
+#### DisplayInfo
+Display information:
+- `int widthPixels` - Screen width in pixels
+- `int heightPixels` - Screen height in pixels
+- `int densityDpi` - Screen density in DPI
+- `String resolution` - Resolution as string (e.g., "1080x1920")
+
+#### NetworkInfo
+Network information:
+- `WifiInfo? wifi` - WiFi connection info (ssid, rssi, ipAddress, etc.)
+- `List<NetworkInterface> interfaces` - Network interfaces with IP addresses
 
 ### Logging
 

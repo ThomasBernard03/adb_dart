@@ -5,13 +5,18 @@ import 'package:adb_dart/src/exceptions/adb_initialization_exception.dart';
 import 'package:adb_dart/src/logging/adb_logger.dart';
 import 'package:adb_dart/src/logging/default_logger.dart';
 import 'package:adb_dart/src/models/android_device.dart';
+import 'package:adb_dart/src/models/battery_info.dart';
+import 'package:adb_dart/src/models/display_info.dart';
 import 'package:adb_dart/src/models/file_entry.dart';
 import 'package:adb_dart/src/models/logcat_level.dart';
+import 'package:adb_dart/src/models/network_info.dart';
+import 'package:adb_dart/src/models/storage_info.dart';
 import 'package:adb_dart/src/services/adb_device_service.dart';
 import 'package:adb_dart/src/services/adb_file_system_service.dart';
 import 'package:adb_dart/src/services/adb_logcat_service.dart';
 import 'package:adb_dart/src/services/adb_package_service.dart';
 import 'package:adb_dart/src/services/adb_property_service.dart';
+import 'package:adb_dart/src/services/adb_system_service.dart';
 
 /// A lightweight ADB client used to interact with Android devices
 /// through the Android Debug Bridge executable.
@@ -36,6 +41,9 @@ class AdbClient {
 
   /// Service for file system operations.
   late final AdbFileSystemService _fileSystemService;
+
+  /// Service for system information operations.
+  late final AdbSystemService _systemService;
 
   /// Creates a new [AdbClient].
   ///
@@ -72,6 +80,10 @@ class AdbClient {
       logger: _logger,
     );
     _fileSystemService = AdbFileSystemService(
+      adbExecutablePath: adbExecutablePath,
+      logger: _logger,
+    );
+    _systemService = AdbSystemService(
       adbExecutablePath: adbExecutablePath,
       logger: _logger,
     );
@@ -218,4 +230,97 @@ class AdbClient {
         deviceId,
         packageName: packageName,
       );
+
+  // ==================
+  // System Information
+  // ==================
+
+  /// Retrieves battery information from the device.
+  ///
+  /// Returns a [BatteryInfo] object containing level, status, health,
+  /// temperature, voltage, and more.
+  Future<BatteryInfo> getBatteryInfo(DeviceId deviceId) =>
+      _systemService.getBatteryInfo(deviceId);
+
+  /// Retrieves storage information for all mounted filesystems.
+  ///
+  /// Returns a list of [StorageInfo] objects for each relevant mount point.
+  Future<List<StorageInfo>> getStorageInfo(DeviceId deviceId) =>
+      _systemService.getStorageInfo(deviceId);
+
+  /// Retrieves display information from the device.
+  ///
+  /// Returns a [DisplayInfo] object containing resolution and density.
+  Future<DisplayInfo> getDisplayInfo(DeviceId deviceId) =>
+      _systemService.getDisplayInfo(deviceId);
+
+  /// Retrieves network information from the device.
+  ///
+  /// Returns a [NetworkInfo] object containing WiFi and interface information.
+  Future<NetworkInfo> getNetworkInfo(DeviceId deviceId) =>
+      _systemService.getNetworkInfo(deviceId);
+
+  // ==================
+  // App Management
+  // ==================
+
+  /// Uninstalls an application from the device.
+  ///
+  /// Set [keepData] to true to preserve the app's data and cache.
+  ///
+  /// Throws [AdbPackageException] if the uninstallation fails.
+  Future<void> uninstallApplication(
+    String packageName,
+    DeviceId deviceId, {
+    bool keepData = false,
+  }) =>
+      _packageService.uninstallApplication(packageName, deviceId,
+          keepData: keepData);
+
+  /// Clears all data for an application on the device.
+  ///
+  /// This removes all app data including cache, databases, and shared preferences.
+  ///
+  /// Throws [AdbPackageException] if the operation fails.
+  Future<void> clearAppData(String packageName, DeviceId deviceId) =>
+      _packageService.clearAppData(packageName, deviceId);
+
+  /// Force stops an application on the device.
+  ///
+  /// This terminates all processes associated with the package.
+  ///
+  /// Throws [AdbPackageException] if the operation fails.
+  Future<void> forceStopApp(String packageName, DeviceId deviceId) =>
+      _packageService.forceStopApp(packageName, deviceId);
+
+  /// Starts a specific activity on the device.
+  ///
+  /// [packageName] is the package name (e.g., 'com.example.app').
+  /// [activityName] is the activity class name (e.g., '.MainActivity').
+  ///
+  /// Throws [AdbPackageException] if the activity cannot be started.
+  Future<void> startActivity(
+    String packageName,
+    String activityName,
+    DeviceId deviceId, {
+    Map<String, String>? extras,
+    String? action,
+    String? data,
+  }) =>
+      _packageService.startActivity(
+        packageName,
+        activityName,
+        deviceId,
+        extras: extras,
+        action: action,
+        data: data,
+      );
+
+  /// Launches an application using its main/launcher activity.
+  ///
+  /// This is equivalent to tapping the app icon on the home screen.
+  ///
+  /// Throws [AdbPackageException] if the app cannot be launched.
+  Future<void> launchApp(String packageName, DeviceId deviceId) =>
+      _packageService.launchApp(packageName, deviceId);
 }

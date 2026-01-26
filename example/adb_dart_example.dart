@@ -179,6 +179,118 @@ Future<void> main() async {
       print('Failed to delete test directory: $e');
     }
 
+    // ==================
+    // System Information
+    // ==================
+
+    print('\n--- System Information ---');
+
+    // Get battery info
+    try {
+      final battery = await adbClient.getBatteryInfo(firstDevice.deviceId);
+      print('Battery:');
+      print('  Level: ${battery.level}%');
+      print('  Status: ${battery.status.name}');
+      print('  Health: ${battery.health.name}');
+      print('  Temperature: ${battery.temperature}°C');
+      print('  Plugged: ${battery.isPlugged ? battery.plugType?.name ?? "yes" : "no"}');
+    } catch (e) {
+      print('Failed to get battery info: $e');
+    }
+
+    // Get storage info
+    try {
+      final storage = await adbClient.getStorageInfo(firstDevice.deviceId);
+      print('\nStorage:');
+      for (final mount in storage) {
+        print('  ${mount.mountPoint}: ${mount.usagePercent}% used');
+      }
+    } catch (e) {
+      print('Failed to get storage info: $e');
+    }
+
+    // Get display info
+    try {
+      final display = await adbClient.getDisplayInfo(firstDevice.deviceId);
+      print('\nDisplay:');
+      print('  Resolution: ${display.resolution}');
+      print('  Density: ${display.densityDpi} dpi');
+    } catch (e) {
+      print('Failed to get display info: $e');
+    }
+
+    // Get network info
+    try {
+      final network = await adbClient.getNetworkInfo(firstDevice.deviceId);
+      print('\nNetwork:');
+      if (network.wifi != null) {
+        print('  WiFi: ${network.wifi!.ssid}');
+        print('  IP: ${network.wifi!.ipAddress}');
+      }
+      print('  Interfaces: ${network.interfaces.length}');
+      for (final iface in network.interfaces) {
+        print('    ${iface.name}: ${iface.ipv4Address ?? "no IPv4"}');
+      }
+    } catch (e) {
+      print('Failed to get network info: $e');
+    }
+
+    // ==================
+    // App Management
+    // ==================
+
+    print('\n--- App Management ---');
+
+    const String testPackage = 'com.example.testapp';
+
+    // Launch an app
+    try {
+      await adbClient.launchApp(testPackage, firstDevice.deviceId);
+      print('Launched $testPackage');
+    } catch (e) {
+      print('Failed to launch app (may not be installed): $e');
+    }
+
+    // Force stop an app
+    try {
+      await adbClient.forceStopApp(testPackage, firstDevice.deviceId);
+      print('Force stopped $testPackage');
+    } catch (e) {
+      print('Failed to force stop app: $e');
+    }
+
+    // Clear app data
+    try {
+      await adbClient.clearAppData(testPackage, firstDevice.deviceId);
+      print('Cleared data for $testPackage');
+    } catch (e) {
+      print('Failed to clear app data: $e');
+    }
+
+    // Start a specific activity
+    try {
+      await adbClient.startActivity(
+        'com.android.settings',
+        '.Settings',
+        firstDevice.deviceId,
+      );
+      print('Opened Settings app');
+    } catch (e) {
+      print('Failed to start activity: $e');
+    }
+
+    // Uninstall an app (with keepData option)
+    // try {
+    //   await adbClient.uninstallApplication(
+    //     testPackage,
+    //     firstDevice.deviceId,
+    //     keepData: true, // Keep app data for potential reinstall
+    //   );
+    //   print('Uninstalled $testPackage (data preserved)');
+    // } catch (e) {
+    //   print('Failed to uninstall app: $e');
+    // }
+
   } on AdbDeviceException catch (e) {
     print('Device error: $e');
   } on AdbException catch (e) {

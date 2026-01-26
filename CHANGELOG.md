@@ -1,3 +1,35 @@
+## 1.2.0
+
+### New Features
+- **System Information**: Retrieve detailed device information
+  - `getBatteryInfo()` - Battery level, status, health, temperature, voltage
+  - `getStorageInfo()` - Storage usage for all mount points
+  - `getDisplayInfo()` - Screen resolution and density
+  - `getNetworkInfo()` - WiFi status, IP addresses, network interfaces
+- **App Management**: Control applications on the device
+  - `launchApp()` - Launch an app by package name
+  - `startActivity()` - Start a specific activity with extras, action, and data
+  - `forceStopApp()` - Force stop a running application
+  - `clearAppData()` - Clear all data for an application
+  - `uninstallApplication()` - Uninstall an app with optional data preservation
+
+### New Models
+- `BatteryInfo` - Battery status with level, health, temperature, charging state
+- `BatteryStatus` - Enumeration of battery states (charging, discharging, full, etc.)
+- `BatteryHealth` - Enumeration of battery health states
+- `PlugType` - Enumeration of power sources (ac, usb, wireless)
+- `StorageInfo` - Storage mount information with size and usage
+- `DisplayInfo` - Display resolution and density
+- `NetworkInfo` - Network status with WiFi and interfaces
+- `WifiInfo` - WiFi connection details
+- `NetworkInterface` - Network interface with IP addresses
+
+### New Services
+- `AdbSystemService` - Service for system information retrieval
+
+### Breaking Changes
+- None - All existing APIs remain backward compatible
+
 ## 1.1.0
 
 ### New Features
