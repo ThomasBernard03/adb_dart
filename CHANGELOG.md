@@ -1,3 +1,10 @@
+## 1.2.2
+
+### Fixes
+- **Package Publishing**: Fixed package distribution to exclude large binary files
+  - Added `.pubignore` to prevent ADB binary from being included in published package
+  - Reduced package size from 6 MB to 21 KB
+
 ## 1.2.1
 
 ### Bug Fixes

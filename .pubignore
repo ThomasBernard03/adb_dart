@@ -1,0 +1,5 @@
+# FVM Flutter Version Manager
+.fvm/
+
+# ADB binary (should not be published)
+example/adb
