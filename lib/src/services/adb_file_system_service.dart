@@ -360,7 +360,7 @@ class AdbFileSystemService {
 
     if (packageName != null) {
       final fileName = file.uri.pathSegments.last;
-      final tmpPath = '/sdcard/$fileName';
+      final tmpPath = '/data/local/tmp/$fileName';
 
       final pushResult = await Process.run(adbExecutablePath, [
         '-s',
@@ -376,6 +376,9 @@ class AdbFileSystemService {
         return;
       }
 
+      // Determine the relative target path within the app directory
+      final target = destinationPath.isNotEmpty ? destinationPath : fileName;
+
       final copyResult = await Process.run(adbExecutablePath, [
         '-s',
         deviceId,
@@ -384,7 +387,7 @@ class AdbFileSystemService {
         packageName,
         'cp',
         tmpPath,
-        destinationPath,
+        target,
       ]);
 
       await Process.run(
@@ -401,7 +404,7 @@ class AdbFileSystemService {
 
     if (privatePath != null) {
       final fileName = file.uri.pathSegments.last;
-      final tmpPath = '/sdcard/$fileName';
+      final tmpPath = '/data/local/tmp/$fileName';
 
       final pushResult = await Process.run(adbExecutablePath, [
         '-s',
@@ -417,9 +420,17 @@ class AdbFileSystemService {
         return;
       }
 
-      final target = privatePath.subPath != null
-          ? '${privatePath.subPath}/$fileName'
-          : fileName;
+      // Determine the target path relative to the app's data directory
+      final String target;
+      if (privatePath.subPath != null && privatePath.subPath!.isNotEmpty) {
+        // If subPath ends with '/', it's a directory, append filename
+        target = privatePath.subPath!.endsWith('/')
+            ? '${privatePath.subPath}$fileName'
+            : privatePath.subPath!;
+      } else {
+        // No subPath means root of app directory
+        target = fileName;
+      }
 
       final copyResult = await Process.run(adbExecutablePath, [
         '-s',

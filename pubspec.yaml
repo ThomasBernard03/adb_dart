@@ -1,6 +1,6 @@
 name: adb_dart
 description: A lightweight Dart client for interacting with Android devices through ADB (Android Debug Bridge). List devices, install APKs, read logcat, and more.
-version: 1.2.0
+version: 1.2.1
 repository: https://github.com/ThomasBernard03/adb_dart
 homepage: https://github.com/ThomasBernard03/adb_dart
 
