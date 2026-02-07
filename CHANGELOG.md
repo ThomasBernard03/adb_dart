@@ -1,3 +1,11 @@
+## 1.2.1
+
+### Bug Fixes
+- **File Upload to Private Directories**: Fixed issue with uploading files to app-specific private directories
+  - Changed temporary storage location from `/sdcard/` to `/data/local/tmp/` for better reliability
+  - Improved path handling for destination paths when using `packageName` parameter
+  - Fixed path resolution logic for `privatePath.subPath` to properly handle directory paths ending with `/`
+
 ## 1.2.0
 
 ### New Features
