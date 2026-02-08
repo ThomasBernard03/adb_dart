@@ -8,8 +8,9 @@ import 'package:adb_dart/src/models/file_type.dart';
 
 /// Service for managing file system operations on Android devices.
 ///
-/// Handles both public and private (app-specific) file operations,
-/// using run-as when necessary to access package-private directories.
+/// Handles both public and private (app-specific) file operations.
+/// When a [packageName] is provided, the service uses `run-as` to access
+/// the package's private directories with proper permissions.
 class AdbFileSystemService {
   /// Absolute path to the adb executable.
   final String adbExecutablePath;
@@ -25,20 +26,6 @@ class AdbFileSystemService {
     required this.adbExecutablePath,
     AdbLogger? logger,
   }) : _logger = logger ?? const DefaultLogger();
-
-  /// Parses a path to determine if it's a private app path (/data/data/).
-  /// Returns the package name and optional subpath if it's a private path.
-  ({String package, String? subPath})? _parsePrivateAppPath(String path) {
-    if (!path.startsWith('/data/data/')) return null;
-
-    final parts = path.split('/');
-    if (parts.length < 4) return null;
-
-    final package = parts[3];
-    final subPath = parts.length > 4 ? parts.sublist(4).join('/') : null;
-
-    return (package: package, subPath: subPath);
-  }
 
   /// Parses a single line from `ls -l` output into a [FileEntry].
   FileEntry _parseLsLine(String line) {
@@ -143,7 +130,8 @@ class AdbFileSystemService {
   /// Deletes a file or directory on the specified device.
   ///
   /// If [packageName] is provided, uses `run-as` to delete files in the
-  /// package's private directory.
+  /// package's private directory. The [filePath] should be relative to the
+  /// package's data directory when using [packageName].
   ///
   /// Uses `rm -rf` to recursively delete directories.
   Future<void> deleteFile(
@@ -169,24 +157,8 @@ class AdbFileSystemService {
         filePath,
       ];
     } else {
-      final privatePath = _parsePrivateAppPath(filePath);
-
-      if (privatePath != null) {
-        final target = privatePath.subPath ?? '.';
-        command = [
-          '-s',
-          deviceId,
-          'shell',
-          'run-as',
-          privatePath.package,
-          'rm',
-          '-rf',
-          target,
-        ];
-      } else {
-        final escaped = filePath.replaceAll("'", r"'\''");
-        command = ['-s', deviceId, 'shell', 'rm', '-rf', "'$escaped'"];
-      }
+      final escaped = filePath.replaceAll("'", r"'\''");
+      command = ['-s', deviceId, 'shell', 'rm', '-rf', "'$escaped'"];
     }
 
     final result = await Process.run(adbExecutablePath, command);
@@ -200,7 +172,8 @@ class AdbFileSystemService {
   /// Creates a directory on the specified device.
   ///
   /// If [packageName] is provided, uses `run-as` to create the directory
-  /// in the package's private directory.
+  /// in the package's private directory. The [path] and [name] should be
+  /// relative to the package's data directory when using [packageName].
   ///
   /// Uses `mkdir -p` to create parent directories as needed.
   Future<void> createDirectory(
@@ -228,24 +201,8 @@ class AdbFileSystemService {
         fullPath,
       ];
     } else {
-      final privatePath = _parsePrivateAppPath(fullPath);
-
-      if (privatePath != null) {
-        final target = privatePath.subPath ?? name;
-        command = [
-          '-s',
-          deviceId,
-          'shell',
-          'run-as',
-          privatePath.package,
-          'mkdir',
-          '-p',
-          target,
-        ];
-      } else {
-        final escaped = fullPath.replaceAll("'", r"'\''");
-        command = ['-s', deviceId, 'shell', 'mkdir', '-p', "'$escaped'"];
-      }
+      final escaped = fullPath.replaceAll("'", r"'\''");
+      command = ['-s', deviceId, 'shell', 'mkdir', '-p', "'$escaped'"];
     }
 
     final result = await Process.run(adbExecutablePath, command);
@@ -259,7 +216,8 @@ class AdbFileSystemService {
   /// Downloads a file from the device to the local filesystem.
   ///
   /// If [packageName] is provided, uses `run-as` with `exec-out` to download
-  /// files from the package's private directory.
+  /// files from the package's private directory. The [filePath] should be
+  /// relative to the package's data directory when using [packageName].
   ///
   /// Falls back to standard `adb pull` for public files.
   Future<void> downloadFile(
@@ -297,33 +255,6 @@ class AdbFileSystemService {
       return;
     }
 
-    final privatePath = _parsePrivateAppPath(filePath);
-
-    if (privatePath != null) {
-      final localFile = File(destinationPath);
-      await localFile.parent.create(recursive: true);
-
-      final process = await Process.start(adbExecutablePath, [
-        '-s',
-        deviceId,
-        'exec-out',
-        'run-as',
-        privatePath.package,
-        'cat',
-        filePath,
-      ]);
-
-      final sink = localFile.openWrite();
-      await process.stdout.pipe(sink);
-      await sink.close();
-
-      final exitCode = await process.exitCode;
-      if (exitCode != 0) {
-        _logger.error('Download failed (exec-out)');
-      }
-      return;
-    }
-
     final result = await Process.run(adbExecutablePath, [
       '-s',
       deviceId,
@@ -340,8 +271,10 @@ class AdbFileSystemService {
 
   /// Uploads a file from the local filesystem to the device.
   ///
-  /// If [packageName] is provided, uploads to /sdcard first, then uses
-  /// `run-as` to copy the file to the package's private directory.
+  /// If [packageName] is provided, uploads to /data/local/tmp first, then uses
+  /// `run-as` to copy the file to the package's private directory. The
+  /// [destinationPath] should be relative to the package's data directory
+  /// when using [packageName].
   ///
   /// Falls back to standard `adb push` for public destinations.
   Future<void> uploadFile(
@@ -385,59 +318,6 @@ class AdbFileSystemService {
         'shell',
         'run-as',
         packageName,
-        'cp',
-        tmpPath,
-        target,
-      ]);
-
-      await Process.run(
-          adbExecutablePath, ['-s', deviceId, 'shell', 'rm', tmpPath]);
-
-      if (copyResult.exitCode != 0) {
-        final stderr = copyResult.stderr.toString();
-        _logger.error('Upload failed (private): $stderr');
-      }
-      return;
-    }
-
-    final privatePath = _parsePrivateAppPath(destinationPath);
-
-    if (privatePath != null) {
-      final fileName = file.uri.pathSegments.last;
-      final tmpPath = '/data/local/tmp/$fileName';
-
-      final pushResult = await Process.run(adbExecutablePath, [
-        '-s',
-        deviceId,
-        'push',
-        localFilePath,
-        tmpPath,
-      ]);
-
-      if (pushResult.exitCode != 0) {
-        _logger.error(
-            'Failed to push to temporary location: ${pushResult.stderr}');
-        return;
-      }
-
-      // Determine the target path relative to the app's data directory
-      final String target;
-      if (privatePath.subPath != null && privatePath.subPath!.isNotEmpty) {
-        // If subPath ends with '/', it's a directory, append filename
-        target = privatePath.subPath!.endsWith('/')
-            ? '${privatePath.subPath}$fileName'
-            : privatePath.subPath!;
-      } else {
-        // No subPath means root of app directory
-        target = fileName;
-      }
-
-      final copyResult = await Process.run(adbExecutablePath, [
-        '-s',
-        deviceId,
-        'shell',
-        'run-as',
-        privatePath.package,
         'cp',
         tmpPath,
         target,
