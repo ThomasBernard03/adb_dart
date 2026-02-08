@@ -1,3 +1,10 @@
+## 1.2.4
+
+### Bug Fixes
+- **File System Service**: Fixed file deletion with spaces in file paths when using `packageName`
+  - Fixed `deleteFile()` to properly escape file paths containing spaces in `run-as` commands
+  - Ensures consistent shell escaping behavior across all file system operations with private app directories
+
 ## 1.2.3
 
 ### Bug Fixes

@@ -145,6 +145,8 @@ class AdbFileSystemService {
 
     final List<String> command;
 
+    final escaped = filePath.replaceAll("'", r"'\''");
+
     if (packageName != null) {
       command = [
         '-s',
@@ -154,10 +156,9 @@ class AdbFileSystemService {
         packageName,
         'rm',
         '-rf',
-        filePath,
+        "'$escaped'",
       ];
     } else {
-      final escaped = filePath.replaceAll("'", r"'\''");
       command = ['-s', deviceId, 'shell', 'rm', '-rf', "'$escaped'"];
     }
 
