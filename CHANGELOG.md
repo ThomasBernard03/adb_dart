@@ -1,3 +1,11 @@
+## 1.2.3
+
+### Bug Fixes
+- **File System Service**: Fixed directory creation and file upload issues with private app directories
+  - Fixed `createDirectory()` to allow creating directories at the root (empty path) when using `packageName`
+  - Fixed `uploadFile()` to properly handle filenames containing spaces when using `packageName`
+  - Added proper shell escaping for file paths in `run-as` commands
+
 ## 1.2.2
 
 ### Fixes

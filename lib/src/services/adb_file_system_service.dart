@@ -182,9 +182,11 @@ class AdbFileSystemService {
     DeviceId deviceId, {
     String? packageName,
   }) async {
-    if (path.isEmpty || name.isEmpty) return;
+    if (name.isEmpty) return;
 
-    final fullPath = path.endsWith('/') ? '$path$name' : '$path/$name';
+    final fullPath = path.isEmpty
+        ? name
+        : (path.endsWith('/') ? '$path$name' : '$path/$name');
     _logger.debug('Creating directory: $fullPath');
 
     final List<String> command;
@@ -312,6 +314,10 @@ class AdbFileSystemService {
       // Determine the relative target path within the app directory
       final target = destinationPath.isNotEmpty ? destinationPath : fileName;
 
+      // Escape paths for shell commands to handle spaces
+      final escapedTmpPath = tmpPath.replaceAll("'", r"'\''");
+      final escapedTarget = target.replaceAll("'", r"'\''");
+
       final copyResult = await Process.run(adbExecutablePath, [
         '-s',
         deviceId,
@@ -319,12 +325,13 @@ class AdbFileSystemService {
         'run-as',
         packageName,
         'cp',
-        tmpPath,
-        target,
+        "'$escapedTmpPath'",
+        "'$escapedTarget'",
       ]);
 
+      // Escape tmpPath for rm command as well
       await Process.run(
-          adbExecutablePath, ['-s', deviceId, 'shell', 'rm', tmpPath]);
+          adbExecutablePath, ['-s', deviceId, 'shell', 'rm', "'$escapedTmpPath'"]);
 
       if (copyResult.exitCode != 0) {
         final stderr = copyResult.stderr.toString();
